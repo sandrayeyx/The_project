@@ -3,6 +3,8 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+import torch
+
 CURRENT_FILE = Path(__file__).resolve()
 PROJECT_ROOT = next(parent for parent in CURRENT_FILE.parents if (parent / "src").is_dir())
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -530,6 +532,220 @@ class LowFailureFallbackTests(unittest.TestCase):
         self.assertEqual(record["effective_decision_mode"], "dual_threshold_v2")
         self.assertTrue(record["low_failure_fallback_applied"])
         self.assertEqual(record["low_failure_fallback_reason"], "insufficient_effective_support")
+
+
+class PressureRouterAndLowPressureTests(unittest.TestCase):
+    def setUp(self):
+        self.simulation = ClosedLoopFailureSimulation.__new__(ClosedLoopFailureSimulation)
+        self.simulation.args = SimpleNamespace(
+            threshold_calibration_scope="terminal_only",
+            threshold_min_support=30,
+            threshold_objective="balanced_accuracy",
+            threshold_min_precision=0.7,
+            fused_mlp_hidden_dim=8,
+            fused_model_type="mlp",
+        )
+        self.simulation.true_failure_v2_policy = "strict"
+        self.simulation.failure_decision_mode = "single_fused_score"
+        self.simulation.evaluator = build_default_failure_evaluator()
+        self.simulation.device = torch.device("cpu")
+        self.simulation.round_index = 1
+        self.simulation.pressure_router_config = {
+            "enabled": "on",
+            "high_pressure_threshold": 0.45,
+            "bandwidth_std_norm_max": 0.20,
+            "score_formula": {
+                "degraded_edge_ratio_weight": 0.40,
+                "edge_disconnect_ratio_weight": 0.35,
+                "edge_bandwidth_mean_decrease_ratio_weight": 0.20,
+                "edge_bandwidth_decrease_std_norm_weight": 0.05,
+            },
+            "override": {
+                "enabled": "on",
+                "apply_scope": "next_round_only",
+                "scope": "session",
+                "high_risk_decision_threshold": 0.30,
+                "high_risk_terminal_threshold": 0.50,
+                "upgrade_if_batch_failure_ratio_ge": 0.20,
+                "upgrade_if_batch_high_risk_ratio_ge": 0.35,
+            },
+        }
+        self.simulation.pressure_router_state = {
+            "router_enabled": "on",
+            "override_enabled": "on",
+            "pending_override_signal": "keep",
+            "pending_override_apply_round": None,
+            "last_round_batch_failure_ratio": 0.0,
+            "last_round_batch_high_risk_ratio": 0.0,
+            "last_round_override_signal": "keep",
+            "last_round_override_applied_to_next_round": False,
+        }
+        self.simulation.low_pressure_classifier_config = {
+            "enabled": "on",
+            "model_type": "mlp",
+            "hidden_dim": 16,
+            "dropout": 0.10,
+            "learning_rate": 5e-4,
+            "weight_decay": 1e-4,
+            "epochs": 20,
+            "batch_size": 8,
+            "patience": 5,
+            "pos_weight": 20.0,
+            "holdout_ratio": 0.20,
+            "feature_set": "summary_v1",
+            "threshold": {"objective": "recall_at_precision", "min_precision": 0.50},
+            "fallback": {
+                "min_effective_support": 12,
+                "require_both_classes_in_train": "on",
+                "policy": "dual_threshold_v2",
+            },
+        }
+        self.simulation.low_failure_regime_config = {
+            "enabled": "on",
+            "fallback_policy": "dual_threshold_v2",
+            "trigger": {
+                "min_effective_support": 30,
+                "require_both_classes_in_train": "on",
+                "min_fused_holdout_auc": 0.55,
+                "enable_zero_prediction_guard": "on",
+            },
+            "allow_small_sample_fused_experiment": "off",
+            "small_sample_threshold_min_support": 12,
+        }
+        self.simulation.last_failure_model_info = {
+            "fused_model_status": "fitted",
+            "fused_model_holdout_record_count": 12,
+            "primary_score_holdout_auc": 0.80,
+            "fused_threshold": 0.5,
+            "final_threshold": 0.5,
+        }
+        self.simulation.last_threshold_stats = {
+            "effective_support": 40,
+            "train_support": 32,
+            "positive_count": 8,
+            "negative_count": 24,
+        }
+        self.simulation.last_low_pressure_model_info = {
+            "low_pressure_model_status": "fitted",
+            "low_pressure_model_holdout_record_count": 8,
+            "low_pressure_model_holdout_auc": 0.72,
+            "low_pressure_threshold": 0.40,
+        }
+        self.simulation.last_low_pressure_threshold_stats = {
+            "effective_support": 20,
+            "train_support": 16,
+            "positive_count": 6,
+            "negative_count": 10,
+        }
+        self.simulation.low_failure_regime_state = {
+            "enabled": "on",
+            "fallback_applied": False,
+            "fallback_reason": "",
+            "effective_decision_mode": "single_fused_score",
+        }
+        self.simulation.summary_records = []
+
+    def test_pressure_score_formula_and_threshold(self):
+        record = {
+            "DegradedEdgeRatio": 0.5,
+            "EdgeDisconnectRatio": 0.4,
+            "EdgeBandwidthMeanDecreaseRatio": 0.3,
+            "EdgeBandwidthDecreaseStd": 0.1,
+        }
+        score = self.simulation._compute_pressure_score(record)
+        self.assertAlmostEqual(score, 0.40 * 0.5 + 0.35 * 0.4 + 0.20 * 0.3 + 0.05 * 0.5, places=6)
+        self.assertEqual(self.simulation._compute_initial_pressure_regime(record), "low_pressure")
+
+    def test_pressure_override_applies_to_next_round_only(self):
+        record = {
+            "DegradedEdgeRatio": 0.2,
+            "EdgeDisconnectRatio": 0.2,
+            "EdgeBandwidthMeanDecreaseRatio": 0.2,
+            "EdgeBandwidthDecreaseStd": 0.0,
+        }
+        record["initial_pressure_regime"] = self.simulation._compute_initial_pressure_regime(record)
+        self.assertEqual(
+            self.simulation._resolve_effective_pressure_regime(record, round_index=1),
+            "low_pressure",
+        )
+        self.simulation._set_pending_pressure_override("upgrade_to_high", 2)
+        self.assertEqual(
+            self.simulation._resolve_effective_pressure_regime(record, round_index=1),
+            "low_pressure",
+        )
+        self.assertEqual(
+            self.simulation._resolve_effective_pressure_regime(record, round_index=2),
+            "high_pressure",
+        )
+
+    def test_compute_round_pressure_override_signal(self):
+        records = [
+            {"decision_score_v2": 0.10, "terminal_risk_score": 0.10, "system_failure_v2": False},
+            {"decision_score_v2": 0.35, "terminal_risk_score": 0.20, "system_failure_v2": False},
+            {"decision_score_v2": 0.20, "terminal_risk_score": 0.60, "system_failure_v2": True},
+        ]
+        result = self.simulation._compute_round_pressure_override_signal(records)
+        self.assertEqual(result["signal"], "upgrade_to_high")
+        self.assertAlmostEqual(result["batch_failure_ratio"], 1.0 / 3.0, places=6)
+        self.assertAlmostEqual(result["batch_high_risk_ratio"], 2.0 / 3.0, places=6)
+
+    def test_low_pressure_training_matrix_uses_pressure_regime(self):
+        low_record = {
+            "effective_pressure_regime": "low_pressure",
+            "true_failure_v2": True,
+            "true_failure_v2_strict": True,
+            "converged_mean_v2": 0.1,
+            "converged_p75_v2": 0.2,
+            "converged_max_v2": 0.3,
+            "converged_std_v2": 0.1,
+            "converged_slope_v2": 0.0,
+            "converged_high_ratio_v2": 0.2,
+            "terminal_risk_score": 0.6,
+            "terminal_score_gap_v2": 0.5,
+            "decision_score_v2": 0.4,
+            "pressure_score": 0.2,
+        }
+        high_record = dict(low_record)
+        high_record["effective_pressure_regime"] = "high_pressure"
+        features, labels, filtered = self.simulation._build_low_pressure_training_matrix([low_record, high_record])
+        self.assertEqual(features.shape, (1, 10))
+        self.assertEqual(labels.tolist(), [1.0])
+        self.assertEqual(filtered, [low_record])
+
+    def test_low_pressure_fallback_on_single_class_labels(self):
+        applied, reason = self.simulation._should_fallback_from_low_pressure(
+            {"effective_support": 20, "train_support": 16, "positive_count": 6, "negative_count": 0},
+            self.simulation.last_low_pressure_model_info,
+        )
+        self.assertTrue(applied)
+        self.assertEqual(reason, "single_class_labels")
+
+    def test_recompute_predictions_uses_low_pressure_classifier(self):
+        self.simulation.summary_records = [
+            {
+                "round_index": 1,
+                "DegradedEdgeRatio": 0.2,
+                "EdgeDisconnectRatio": 0.2,
+                "EdgeBandwidthMeanDecreaseRatio": 0.2,
+                "EdgeBandwidthDecreaseStd": 0.0,
+                "decision_score_v2": 0.2,
+                "terminal_risk_score": 0.2,
+                "terminal_hard_failure": False,
+                "true_failure_v2": True,
+                "true_failure_v2_strict": True,
+                "initial_pressure_regime": "low_pressure",
+                "effective_pressure_regime": "low_pressure",
+            }
+        ]
+        self.simulation._refresh_decision_scores_on_records = lambda: None
+        self.simulation._compute_low_pressure_score_and_logit_for_record = lambda record: (0.8, 1.2)
+        self.simulation._should_fallback_from_low_pressure = lambda *args, **kwargs: (False, "")
+        self.simulation._compute_fused_score_and_logit_for_record = lambda record: (0.1, -2.0)
+        self.simulation._recompute_predictions_from_thresholds()
+        record = self.simulation.summary_records[0]
+        self.assertTrue(record["system_failure_v2"])
+        self.assertEqual(record["effective_decision_mode"], "low_pressure_classifier")
+        self.assertAlmostEqual(record["low_pressure_score"], 0.8, places=6)
 
 
 if __name__ == "__main__":

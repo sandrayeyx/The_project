@@ -1,0 +1,114 @@
+{
+  "timestamp": "20260608_163648",
+  "tag": "after_offline_recompute",
+  "failure_decision_mode": "single_fused_score",
+  "true_failure_v2_policy": "strict",
+  "record_count": 113,
+  "positive_count": 14,
+  "negative_count": 99,
+  "auc_decision_score_v2": 0.373015873015873,
+  "decision_score_v2_percentiles_positive": {
+    "p10": 0.24461077565074932,
+    "p25": 0.25120385601201856,
+    "p50": 0.28173223245396506,
+    "p75": 0.3551745637550121,
+    "p90": 0.39589432069498187
+  },
+  "decision_score_v2_percentiles_negative": {
+    "p10": 0.250061669717327,
+    "p25": 0.28466273306815454,
+    "p50": 0.3384164270496985,
+    "p75": 0.37860161452756735,
+    "p90": 0.3985928575831375
+  },
+  "decision_overlap_ratio_03_07": 0.6283185840707964,
+  "primary_score_name": "fused_score",
+  "auc_fused_score": 0.5,
+  "primary_score_percentiles_positive": {
+    "p10": 0.0,
+    "p25": 0.0,
+    "p50": 0.0,
+    "p75": 0.0,
+    "p90": 0.0
+  },
+  "primary_score_percentiles_negative": {
+    "p10": 0.0,
+    "p25": 0.0,
+    "p50": 0.0,
+    "p75": 0.0,
+    "p90": 0.0
+  },
+  "primary_score_overlap_ratio_03_07": 0.0,
+  "decision_formula_config": {
+    "w_mean": 0.6,
+    "w_p75": 0.25,
+    "w_max": 0.1,
+    "w_slope_pos": 0.1,
+    "w_std_penalty": 0.2,
+    "enable_decision_tail_boost": false,
+    "decision_tail_gamma": 1.0,
+    "decision_model_type": "fixed_linear",
+    "decision_model_weights": {
+      "w_mean": 0.6,
+      "w_p75": 0.25,
+      "w_max": 0.1,
+      "w_slope_pos": 0.1,
+      "w_std_penalty": 0.2,
+      "w_high_ratio": 0.5,
+      "w_terminal_gap": 0.5
+    },
+    "decision_model_bias": 0.0
+  },
+  "failure_model_info": {
+    "failure_decision_mode": "single_fused_score",
+    "single_threshold_used": true,
+    "primary_score_name": "fused_score",
+    "primary_score_holdout_auc": 0.0,
+    "fused_model_status": "frozen",
+    "fused_model_holdout_record_count": 0,
+    "fused_model_holdout_auc": 0.0,
+    "fused_model_holdout_accuracy": 0.0,
+    "fused_model_type": "mlp_small",
+    "fused_model_weights": {},
+    "fused_model_bias": 0.0,
+    "fused_model_input_mean": [],
+    "fused_model_input_std": [],
+    "fused_model_mlp_state": {},
+    "fused_model_mlp_hidden_dim": 16,
+    "fused_threshold": 0.5,
+    "direct_model_status": "disabled",
+    "direct_model_holdout_record_count": 0,
+    "direct_model_holdout_auc": 0.0,
+    "direct_model_holdout_accuracy": 0.0,
+    "direct_model_weights": {},
+    "direct_model_bias": 0.0,
+    "final_threshold": 0.5,
+    "threshold": 0.5,
+    "decision_model_info": {
+      "decision_model_status": "disabled",
+      "decision_model_holdout_record_count": 0,
+      "decision_model_holdout_auc": 0.0,
+      "decision_model_holdout_accuracy": 0.0,
+      "decision_model_config": {
+        "w_mean": 0.6,
+        "w_p75": 0.25,
+        "w_max": 0.1,
+        "w_slope_pos": 0.1,
+        "w_std_penalty": 0.2,
+        "enable_decision_tail_boost": false,
+        "decision_tail_gamma": 1.0,
+        "decision_model_type": "fixed_linear",
+        "decision_model_weights": {
+          "w_mean": 0.6,
+          "w_p75": 0.25,
+          "w_max": 0.1,
+          "w_slope_pos": 0.1,
+          "w_std_penalty": 0.2,
+          "w_high_ratio": 0.5,
+          "w_terminal_gap": 0.5
+        },
+        "decision_model_bias": 0.0
+      }
+    }
+  }
+}

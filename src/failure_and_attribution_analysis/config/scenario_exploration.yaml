@@ -85,6 +85,56 @@ low_failure_regime:
   allow_small_sample_fused_experiment: "off"  # off by default; only for offline or special experiments / 默认关闭，仅用于离线或专项小样本试验
   small_sample_threshold_min_support: 12  # only used when allow_small_sample_fused_experiment=on / 仅在开启小样本试验时生效
 
+# pressure_router / 压力分级路由器（V1）
+# - v1 uses environment-only pressure score and excludes attack level from the main formula.
+# - v1 仅使用环境扰动项计算 pressure_score，不把 attack level 纳入主公式。
+# - override is session-scoped and affects the next round only; it does not rewrite
+#   current-round predictions.
+# - override 为 session 级，仅影响下一轮路由，不回改当前轮判定结果。
+pressure_router:
+  enabled: "on"
+  high_pressure_threshold: 0.45
+  bandwidth_std_norm_max: 0.20  # normalize EdgeBandwidthDecreaseStd to [0,1] using min(value/max, 1.0)
+  score_formula:
+    degraded_edge_ratio_weight: 0.40
+    edge_disconnect_ratio_weight: 0.35
+    edge_bandwidth_mean_decrease_ratio_weight: 0.20
+    edge_bandwidth_decrease_std_norm_weight: 0.05
+  override:
+    enabled: "on"
+    apply_scope: "next_round_only"
+    scope: "session"
+    high_risk_decision_threshold: 0.30
+    high_risk_terminal_threshold: 0.50
+    upgrade_if_batch_failure_ratio_ge: 0.20
+    upgrade_if_batch_high_risk_ratio_ge: 0.35
+
+# low_pressure_classifier / 低压专用分类器（V1）
+# - v1 uses a small PyTorch MLP with BCEWithLogitsLoss(pos_weight).
+# - v1 使用小型 PyTorch MLP，并通过 pos_weight 提高失效样本权重。
+# - threshold selection prefers recall under a minimum precision constraint.
+# - 阈值选择优先满足最小 precision 约束，再尽量提高 recall。
+low_pressure_classifier:
+  enabled: "on"
+  model_type: "mlp"
+  hidden_dim: 16
+  dropout: 0.10
+  learning_rate: 5e-4
+  weight_decay: 1e-4
+  epochs: 200
+  batch_size: 16
+  patience: 20
+  pos_weight: 20.0
+  holdout_ratio: 0.20
+  feature_set: "summary_v1"
+  threshold:
+    objective: "recall_at_precision"
+    min_precision: 0.50
+  fallback:
+    min_effective_support: 12
+    require_both_classes_in_train: "on"
+    policy: "dual_threshold_v2"
+
 distribution_balance_guard:
   enabled: "on"
   mode: "three_layer_balance"
