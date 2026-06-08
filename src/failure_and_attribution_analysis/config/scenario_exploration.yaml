@@ -1,0 +1,127 @@
+# Scenario exploration options / 场景探索配置
+# This file provides the default behavior for the closed-loop simulation.
+# 这份 YAML 用来提供闭环仿真的默认探索策略；命令行参数可以临时覆盖这里的值。
+#
+# Priority / 优先级:
+# 1. CLI overrides / 命令行参数
+# 2. This YAML file / 本配置文件
+# 3. Built-in code defaults / 代码默认值
+#
+# -----------------------------------------------------------------------------
+# single_attack_types / 单攻击时允许探索的攻击类型白名单
+# -----------------------------------------------------------------------------
+# Unified rule / 统一规则:
+# - `single_attack_types` is the only supported attack-whitelist field.
+# - `single_attack_types` 是唯一保留的攻击白名单字段。
+# - `[]` or blank means "do not restrict attack types".
+# - `[]` 或空值表示“不额外限制攻击类型”。
+# - A non-empty list or comma-separated string means "restrict to these attack types".
+# - 非空列表或逗号分隔字符串表示“仅允许这些攻击类型”。
+#
+# Available values / 可选值:
+# - []
+# - ["StateObservationAttack", "RewardAttack"]
+# - ["StateObservationAttack_level", "RewardAttack_level"]
+# - "StateObservationAttack,RewardAttack"
+#
+# Notes / 说明:
+# - This option only applies when single-attack generation is enabled.
+# - 该字段仅在单攻击生成模式下生效。
+# - Each generated scenario still contains at most one active attack type.
+# - 每个生成场景仍然最多只会启用 1 种攻击。
+# - Command-line `--single-attack-types` temporarily overrides this file.
+# - 命令行 `--single-attack-types` 会临时覆盖这里的值。
+single_attack_types: []
+
+online_threshold_split:
+  mode: "stratified_late_holdout"
+  holdout_ratio: 0.20
+  late_window_ratio: 0.25
+  holdout_late_fraction: 0.70
+  random_seed: ""
+
+post_run_rolling_drift_analysis:
+  enabled: "off"
+  window_size: 80
+  step_size: 20
+  min_train_support: 40
+  min_holdout_support: 20
+  output_filename: "rolling_drift_analysis.json"
+
+online_threshold_calibration:
+  objective: "balanced_accuracy"
+  min_precision: 0.70
+  support_aware_threshold_guard:
+    enabled: "on"
+    support_metric: "train_positive_count"
+    low_support:
+      positive_count_max: 8
+      update_mode: "weak_update"
+      max_delta: 0.03
+    medium_support:
+      positive_count_max: 20
+      update_mode: "bounded_update"
+      max_delta: 0.08
+    high_support:
+      update_mode: "full_update"
+
+# low_failure_regime / 低失效率场景专用 fallback 策略
+# - true: keep single_fused_score as preferred mode, but fall back to dual-threshold
+#   decision when fused support is too weak or fused output is not reliable.
+# - true：默认仍优先使用 single_fused_score，但当 fused 样本支持不足或输出明显不可用时，
+#   自动回退到 decision_score_v2 + terminal_risk_score 双阈值判定。
+# - This block affects runtime decision fallback only; it does not change
+#   terminal_hard_failure, true_failure_v2_strict, or the fused feature vector.
+# - 该配置只影响运行时最终判定回退，不修改 terminal_hard_failure、
+#   true_failure_v2_strict、以及 fused 特征定义。
+low_failure_regime:
+  enabled: "on"  # true: allow runtime fallback when fused is not usable / fused 不可用时允许自动回退
+  fallback_policy: "dual_threshold_v2"  # current supported fallback mode / 当前仅支持 dual_threshold_v2
+  trigger:
+    min_effective_support: 30  # if blank, use threshold_min_support / 留空时自动与 threshold_min_support 对齐
+    require_both_classes_in_train: "on"  # true: train split must contain both positive and negative labels / 训练集必须同时包含正负类
+    min_fused_holdout_auc: 0.55  # fused holdout AUC below this is treated as unusable / fused 的 holdout AUC 低于该值时视为不可用
+    enable_zero_prediction_guard: "on"  # true: allow fallback if fused predicts zero failures while true failures exist / 若 fused 一个失效都没报但真实存在失效，则允许回退
+  allow_small_sample_fused_experiment: "off"  # off by default; only for offline or special experiments / 默认关闭，仅用于离线或专项小样本试验
+  small_sample_threshold_min_support: 12  # only used when allow_small_sample_fused_experiment=on / 仅在开启小样本试验时生效
+
+distribution_balance_guard:
+  enabled: "on"
+  mode: "three_layer_balance"
+
+  default_behavior:
+    keep_total_scenarios_per_round_fixed: "on"
+    force_healthy_quota_each_round: "off"
+    allow_boundary_priority_as_default: "on"
+
+  trigger:
+    selected_healthy_band_zero_rounds: 2
+    shortage_flag_rounds: 2
+    healthy_baseline_count_max: 1
+    require_prefilter_healthy_band_zero: "on"
+
+  recovery:
+    extra_round_budget_mode: "replace_only"
+    replace_boundary_slots_default: 1
+    replace_boundary_slots_escalated: 2
+    escalate_after_triggered_rounds: 2
+    auto_exit_after_healthy_recovered_rounds: 2
+    allow_skip_if_no_recovery_candidate: "on"
+    recovery_source_priority:
+      - "healthy_recovery"
+      - "healthy_push"
+
+  constellation_profiles:
+    default:
+      selected_healthy_band_zero_rounds: 2
+      shortage_flag_rounds: 2
+      replace_boundary_slots_default: 1
+      replace_boundary_slots_escalated: 2
+      allow_escalation: "on"
+    large_constellation:
+      constellation_ids: [2]
+      selected_healthy_band_zero_rounds: 3
+      shortage_flag_rounds: 3
+      replace_boundary_slots_default: 1
+      replace_boundary_slots_escalated: 1
+      allow_escalation: "off"

@@ -1,0 +1,15 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Data files
+/data/
+/data-analysis/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
