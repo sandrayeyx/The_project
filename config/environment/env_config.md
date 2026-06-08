@@ -1,4 +1,4 @@
-ConstellationConfig: 2
+ConstellationConfig:0
 DegradedEdgeRatio: 0
 EdgeDisconnectRatio: 0
 EdgeBandwidthMeanDecreaseRatio: 0

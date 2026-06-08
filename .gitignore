@@ -3,8 +3,8 @@
 venv/
 
 # Data files
-/data/
 /data-analysis/
+/data/tmp_data/
 
 # Python cache
 __pycache__/
