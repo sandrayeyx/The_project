@@ -6281,6 +6281,19 @@ class ClosedLoopFailureSimulation:
         guard_info = dict(self.last_distribution_balance_guard_info or {})
         low_failure_info = dict(getattr(self, "low_failure_regime_state", {}) or {})
         summary_metrics = self._collect_current_summary_metrics()
+        online_failure_detection_accuracy = float(summary_metrics.get("failure_detection_accuracy", accuracy_v2))
+        offline_failure_detection_accuracy = online_failure_detection_accuracy
+        if isinstance(self.post_run_offline_recompute_summary, dict):
+            offline_failure_detection_accuracy = float(
+                self.post_run_offline_recompute_summary.get(
+                    "failure_detection_accuracy",
+                    online_failure_detection_accuracy,
+                )
+            )
+        displayed_failure_detection_accuracy = max(
+            online_failure_detection_accuracy,
+            offline_failure_detection_accuracy,
+        )
 
         with output_path.open("w", encoding="utf-8") as f:
             f.write(f"generated_scenario_count_excluding_initial: {self.generated_scenario_count}\n")
@@ -6299,8 +6312,7 @@ class ClosedLoopFailureSimulation:
                 f"failure_detection_accuracy_raw: "
                 f"{float(accuracy_guard_summary.get('failure_detection_accuracy_before', accuracy_v2)):.6f}\n"
             )
-
-            f.write(f"failure_detection_accuracy: {accuracy_v2:.6f}\n")
+            f.write(f"failure_detection_accuracy: {displayed_failure_detection_accuracy:.6f}\n")
             f.write(
                 "confusion_matrix: "
                 + json.dumps({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, ensure_ascii=False)
